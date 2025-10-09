@@ -1,11 +1,16 @@
 name: Build ICS
 on:
   schedule:
-    - cron: "*/1 * * * *"    # her 1 dakikada bir
+    - cron: "*/1 * * * *"     # her 1 dakikada bir
   workflow_dispatch:
 
 permissions:
-  contents: write            # <-- push izni
+  contents: write
+
+# Aynı anda iki run çakışmasın
+concurrency:
+  group: ics-build
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -39,14 +44,29 @@ jobs:
           python generate_ics.py
           test -f docs/calendar.ics
 
-      - name: Commit & push if changed
+      - name: Commit & push (with rebase + retry)
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Sadece değişiklik varsa commit
           git add docs/calendar.ics
-          # değişiklik yoksa çık
-          git diff --cached --quiet && echo "No changes" && exit 0
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
           git commit -m "Update ICS"
-          # olası non-fast-forward için rebase çek
-          git pull --rebase origin ${{ github.ref_name }} || true
-          git push
+
+          # Uzak değişmişse rebase'le ve tekrar dene
+          git fetch origin "$BRANCH"
+          git pull --rebase origin "$BRANCH" || true
+
+          if git push; then
+            echo "Pushed OK"
+          else
+            echo "Push failed once, retrying after rebase…"
+            git fetch
