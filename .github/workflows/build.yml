@@ -1,7 +1,7 @@
 name: Build ICS
 on:
   schedule:
-    - cron: "*/1 * * * *"
+    - cron: "*/6 * * * *"
   workflow_dispatch:
 
 permissions:
