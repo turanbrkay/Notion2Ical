@@ -227,9 +227,11 @@ def calendar_feed_lite():
 def calendar_feed():
     ics_data = generate_ics()
     resp = make_response(ics_data, 200)
-    resp.headers["Content-Type"] = "text/calendar"  # sade
-    resp.headers["Content-Disposition"] = 'attachment; filename="notion_flashcards.ics"'
-    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    resp.headers["Content-Disposition"] = "inline; filename=notion_flashcards.ics"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
     return resp
 
 
