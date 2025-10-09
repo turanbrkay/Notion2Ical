@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Tuple
 from flask import make_response
 
 
+
 from flask import Flask, Response
 from dotenv import load_dotenv
 from notion_client import Client as NotionClient
@@ -223,10 +224,13 @@ def calendar_feed_lite():
     return resp
 
 
-@app.route("/calendar.ics")
+@app.route("/calendar.ics", methods=["GET", "HEAD"])
 def calendar_feed():
-    ics_data = generate_ics()
-    resp = make_response(ics_data, 200)
+    if flask.request.method == "HEAD":
+        resp = make_response("", 200)
+    else:
+        ics_data = generate_ics()
+        resp = make_response(ics_data, 200)
     resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
     resp.headers["Content-Disposition"] = "inline; filename=notion_flashcards.ics"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
