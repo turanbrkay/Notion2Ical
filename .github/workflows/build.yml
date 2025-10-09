@@ -1,7 +1,7 @@
 name: Build ICS
 on:
   schedule:
-    - cron: "*/6 * * * *"
+    - cron: "*/6 * * * *"   # ~6 dakikada bir (GitHub en erken ~5 dk tetikler)
   workflow_dispatch:
 
 permissions:
@@ -48,51 +48,37 @@ jobs:
           set -euxo pipefail
           python - <<'PY'
           import os, sys, traceback
-          from notion_client import Client as NotionClient
-
-          TOKEN = os.environ["NOTION_TOKEN"]
-          DBID  = os.environ["NOTION_DATABASE_ID"]
-          FEED  = os.environ.get("FEED_NAME","Flashcards")
-          TZ    = os.environ.get("FEED_TZ","Europe/Istanbul")
-
-          # import your script functions
           import generate_ics as gen
-
           try:
               ics = gen.generate_ics()
               os.makedirs("docs", exist_ok=True)
               with open("docs/calendar.ics", "w", encoding="utf-8", newline="\r\n") as f:
                   f.write(ics)
               print("WROTE docs/calendar.ics, bytes:", len(ics))
-          except Exception as e:
-              print("ERROR while generating ICS:")
+          except Exception:
               traceback.print_exc()
               sys.exit(1)
           PY
           test -f docs/calendar.ics
           wc -c docs/calendar.ics || true
 
-      - name: Commit & push (rebase + retry)
+      - name: Commit & push (conflict-free)
         env:
-          BRANCH: ${{ github.ref_name }}
+          BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euxo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-          git add docs/calendar.ics
+          # Çalışma ağacını her run'da remote'ın son haline sabitle
+          git fetch origin "$BRANCH"
+          git checkout -B "$BRANCH" "origin/$BRANCH"
+
+          # Sadece değişiklik varsa commit et
+          git add docs/calendar.ics docs/.nojekyll || true
           if git diff --cached --quiet; then
             echo "No changes"; exit 0
           fi
           git commit -m "Update ICS"
-
-          git fetch origin "$BRANCH" || true
-          git pull --rebase origin "$BRANCH" || true
-
-          if ! git push; then
-            echo "Push failed once, retrying after rebase…"
-            git fetch origin "$BRANCH" || true
-            git pull --rebase origin "$BRANCH" || true
-            git push
-          fi
+          git push origin "$BRANCH"
