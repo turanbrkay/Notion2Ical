@@ -139,25 +139,8 @@ def notion_page_to_vevent(page: Dict[str, Any]) -> Optional[str]:
     lines.append("END:VEVENT")
     return "\r\n".join(lines)
 
-# def generate_ics() -> str:
-#     head = [
-#         "BEGIN:VCALENDAR",
-#         "VERSION:2.0",
-#         "PRODID:-//Notion ICS Bridge//EN",
-#         f"X-WR-CALNAME:{ics_escape(FEED_NAME)}",
-#         f"X-WR-TIMEZONE:{ics_escape(FEED_TZ)}",
-#         "CALSCALE:GREGORIAN",
-#         "METHOD:PUBLISH"
-#     ]
-#     events = []
-#     for page in iter_notion_pages(NOTION_DB_ID):
-#         ve = notion_page_to_vevent(page)
-#         if ve:
-#             events.append(ve)
-#     tail = ["END:VCALENDAR"]
-#     return "\r\n".join(head + events + tail) + "\r\n"
 
-def generate_ics() -> str:
+def generate_ics(limit: Optional[int] = None) -> str:
     head = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -168,58 +151,43 @@ def generate_ics() -> str:
         "METHOD:PUBLISH"
     ]
 
-    now_utc = datetime.now(timezone.utc)
-
-    # Önce tüm adayları topla: (normalized_start_dt_utc, page)
-    upcoming = []
-    past = []
-    for page in iter_notion_pages(NOTION_DB_ID):
-        props = page.get("properties", {})
-        date_prop = find_date_prop_obj(props)
-        start_iso, _, _ = extract_date_range(date_prop)
-        if not start_iso:
-            continue
-        start_dt_utc = parse_iso_local(start_iso).astimezone(timezone.utc)
-        if start_dt_utc >= now_utc:
-            upcoming.append((start_dt_utc, page))
-        else:
-            past.append((start_dt_utc, page))
-
-    # Yakın geleceği artan sırada, geçmişi ise en yakın geçmişten geriye doğru sırala
-    upcoming.sort(key=lambda x: x[0])
-    past.sort(key=lambda x: x[0], reverse=True)
-
-    # İlk 50’yi seç: önce gelecek, yetmezse geçmişten tamamla
-    selected = [p for _, p in upcoming[:50]]
-    if len(selected) < 50:
-        need = 50 - len(selected)
-        selected += [p for _, p in past[:need]]
-
-    # Seçilen sayfaları VEVENT’e çevir
     events = []
-    for page in selected:
+    for page in iter_notion_pages(NOTION_DB_ID):
         ve = notion_page_to_vevent(page)
         if ve:
             events.append(ve)
+
+    if limit is not None:
+        events = events[:limit]
 
     tail = ["END:VCALENDAR"]
     return "\r\n".join(head + events + tail) + "\r\n"
 
 
+
 @app.route("/calendar-lite.ics")
 def calendar_feed_lite():
-    # Aynı generate_ics içinde events listesini oluşturuyorsun ya;
-    # orayı kopyalamana gerek yok: en kolayı, generate_ics()’i
-    # küçük bir değişiklikle iki modda çalıştırmak. En hızlı çözüm:
-    ics_data = generate_ics()  # hazır üretileni al
-    # Eğer generate_ics kolay ayrılamıyorsa, geçici olarak:
-    # 1) generate_ics() içinde events bir list olarak elde ediliyorsa
-    #    events[:1000] gibi bir dilimleme ekleyebilirsin.
+    ics_data = generate_ics(limit=50)
     resp = make_response(ics_data, 200)
-    resp.headers["Content-Type"] = "text/calendar"
-    resp.headers["Content-Disposition"] = 'attachment; filename="notion_flashcards_lite.ics"'
+    resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    resp.headers["Content-Disposition"] = 'inline; filename="notion_flashcards_lite.ics"'
     resp.headers["Cache-Control"] = "no-cache"
     return resp
+
+@app.route("/calendar.ics", methods=["GET", "HEAD"])
+def calendar_feed():
+    if request.method == "HEAD":
+        resp = make_response("", 200)
+    else:
+        ics_data = generate_ics()  # limit=None → TÜM kartlar
+        resp = make_response(ics_data, 200)
+    resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    resp.headers["Content-Disposition"] = "inline; filename=notion_flashcards.ics"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
 
 
 @app.route("/calendar.ics", methods=["GET", "HEAD"])
