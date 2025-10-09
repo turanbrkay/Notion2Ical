@@ -1,13 +1,12 @@
 name: Build ICS
 on:
   schedule:
-    - cron: "*/1 * * * *"     # her 1 dakikada bir
+    - cron: "*/1 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# Aynı anda iki run çakışmasın
 concurrency:
   group: ics-build
   cancel-in-progress: true
@@ -27,46 +26,73 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install notion-client
-
-      - name: Ensure docs/ exists and disable Jekyll
         run: |
+          set -euxo pipefail
+          python -V
+          pip install --upgrade pip
+          pip install notion-client
+
+      - name: Ensure docs/ and disable Jekyll
+        run: |
+          set -euxo pipefail
           mkdir -p docs
           touch docs/.nojekyll
 
-      - name: Generate ICS
+      - name: Generate ICS (verbose)
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           FEED_NAME: "Flashcards"
           FEED_TZ: "Europe/Istanbul"
         run: |
-          python generate_ics.py
-          test -f docs/calendar.ics
+          set -euxo pipefail
+          python - <<'PY'
+          import os, sys, traceback
+          from notion_client import Client as NotionClient
 
-      - name: Commit & push (with rebase + retry)
+          TOKEN = os.environ["NOTION_TOKEN"]
+          DBID  = os.environ["NOTION_DATABASE_ID"]
+          FEED  = os.environ.get("FEED_NAME","Flashcards")
+          TZ    = os.environ.get("FEED_TZ","Europe/Istanbul")
+
+          # import your script functions
+          import generate_ics as gen
+
+          try:
+              ics = gen.generate_ics()
+              os.makedirs("docs", exist_ok=True)
+              with open("docs/calendar.ics", "w", encoding="utf-8", newline="\r\n") as f:
+                  f.write(ics)
+              print("WROTE docs/calendar.ics, bytes:", len(ics))
+          except Exception as e:
+              print("ERROR while generating ICS:")
+              traceback.print_exc()
+              sys.exit(1)
+          PY
+          test -f docs/calendar.ics
+          wc -c docs/calendar.ics || true
+
+      - name: Commit & push (rebase + retry)
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
-          set -e
+          set -euxo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-          # Sadece değişiklik varsa commit
           git add docs/calendar.ics
           if git diff --cached --quiet; then
-            echo "No changes"
-            exit 0
+            echo "No changes"; exit 0
           fi
           git commit -m "Update ICS"
 
-          # Uzak değişmişse rebase'le ve tekrar dene
-          git fetch origin "$BRANCH"
+          git fetch origin "$BRANCH" || true
           git pull --rebase origin "$BRANCH" || true
 
-          if git push; then
-            echo "Pushed OK"
-          else
+          if ! git push; then
             echo "Push failed once, retrying after rebase…"
-            git fetch
+            git fetch origin "$BRANCH" || true
+            git pull --rebase origin "$BRANCH" || true
+            git push
+          fi
