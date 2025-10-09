@@ -1,0 +1,30 @@
+name: Build ICS
+on:
+  schedule:
+    - cron: "*/1 * * * *"   # her saat başı
+  workflow_dispatch:      # istersen elle de tetikleyebil
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install notion-client
+      - name: Generate ICS
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          FEED_NAME: "Flashcards"
+          FEED_TZ: "Europe/Istanbul"
+        run: python generate_ics.py
+      - name: Commit & Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/calendar.ics
+          git commit -m "Update ICS" || echo "No changes"
+          git push
