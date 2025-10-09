@@ -49,7 +49,7 @@ def find_title_prop_obj(props: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 def find_date_prop_obj(props: Dict[str, Any]) -> Dict[str, Any]:
-    for key in ("Next Repetition", "Repetition Date", "Unified Date"):
+    for key in ("Unified Date"):
         if key in props and props[key].get("type") == "date":
             return props[key]
     for _, obj in props.items():
