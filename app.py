@@ -42,6 +42,21 @@ def rich_text_to_plain(prop_obj: Dict[str, Any]) -> str:
         return ""
     return "".join([t.get("plain_text", "") for t in rich])
 
+# --- basit cache ---
+CACHE_TTL_SECONDS = 600  # 10 dakika; istersen 300/900 yapabilirsin
+_CACHE_FULL = {"at": None, "data": None}
+_CACHE_LITE = {"at": None, "data": None}
+
+def cached_ics(limit: Optional[int]):
+    now = datetime.now(timezone.utc)
+    bucket = _CACHE_LITE if (limit is not None) else _CACHE_FULL
+    if bucket["at"] and (now - bucket["at"]).total_seconds() < CACHE_TTL_SECONDS and bucket["data"]:
+        return bucket["data"]
+    data = generate_ics(limit=limit)
+    bucket["at"], bucket["data"] = now, data
+    return data
+
+
 def find_title_prop_obj(props: Dict[str, Any]) -> Dict[str, Any]:
     for _, obj in props.items():
         if obj.get("type") == "title":
@@ -49,13 +64,17 @@ def find_title_prop_obj(props: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 def find_date_prop_obj(props: Dict[str, Any]) -> Dict[str, Any]:
-    for key in ("Unified Date"):
+    # BU YANLIŞTI: ("Unified Date")  -> karakter karakter gezer
+    # for key in ("Unified Date"):
+
+    for key in ("Unified Date", "Next Repetition", "Repetition Date"):
         if key in props and props[key].get("type") == "date":
             return props[key]
     for _, obj in props.items():
         if obj.get("type") == "date":
             return obj
     return {}
+
 
 def extract_date_range(prop_obj: Dict[str, Any]) -> Tuple[Optional[str], Optional[str], bool]:
     """
@@ -167,7 +186,7 @@ def generate_ics(limit: Optional[int] = None) -> str:
 
 @app.route("/calendar-lite.ics")
 def calendar_feed_lite():
-    ics_data = generate_ics(limit=50)
+    ics_data = cached_ics(limit=50)
     resp = make_response(ics_data, 200)
     resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
     resp.headers["Content-Disposition"] = 'inline; filename="notion_flashcards_lite.ics"'
@@ -179,14 +198,30 @@ def calendar_feed():
     if request.method == "HEAD":
         resp = make_response("", 200)
     else:
-        ics_data = generate_ics()  # limit=None → TÜM kartlar
-        resp = make_response(ics_data, 200)
+        ics_text = cached_ics(limit=None)  # TÜM kartlar, cache'lenmiş
+        raw = ics_text.encode("utf-8")
+
+        # Büyük feed’lerde iOS’a nefes aldırmak için gzip iyi sonuç veriyor
+        accept_enc = (request.headers.get("Accept-Encoding") or "").lower()
+        if "gzip" in accept_enc and len(raw) >= 8192:
+            import gzip
+            from io import BytesIO
+            buf = BytesIO()
+            with gzip.GzipFile(fileobj=buf, mode="wb") as f:
+                f.write(raw)
+            body = buf.getvalue()
+            resp = make_response(body, 200)
+            resp.headers["Content-Encoding"] = "gzip"
+        else:
+            resp = make_response(raw, 200)
+
     resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
     resp.headers["Content-Disposition"] = "inline; filename=notion_flashcards.ics"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
     return resp
+
 
 
 
