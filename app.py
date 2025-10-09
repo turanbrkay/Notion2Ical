@@ -4,10 +4,8 @@ import os
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Tuple
 from flask import make_response
+from flask import Flask, Response, make_response, request
 
-
-
-from flask import Flask, Response
 from dotenv import load_dotenv
 from notion_client import Client as NotionClient
 
@@ -226,7 +224,7 @@ def calendar_feed_lite():
 
 @app.route("/calendar.ics", methods=["GET", "HEAD"])
 def calendar_feed():
-    if flask.request.method == "HEAD":
+    if request.method == "HEAD":
         resp = make_response("", 200)
     else:
         ics_data = generate_ics()
