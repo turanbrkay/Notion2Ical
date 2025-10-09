@@ -190,22 +190,6 @@ def calendar_feed():
 
 
 
-@app.route("/calendar.ics", methods=["GET", "HEAD"])
-def calendar_feed():
-    if request.method == "HEAD":
-        resp = make_response("", 200)
-    else:
-        ics_data = generate_ics()
-        resp = make_response(ics_data, 200)
-    resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
-    resp.headers["Content-Disposition"] = "inline; filename=notion_flashcards.ics"
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    resp.headers["Expires"] = "0"
-    return resp
-
-
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
