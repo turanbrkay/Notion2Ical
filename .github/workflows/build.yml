@@ -1,7 +1,7 @@
 name: Build ICS
 on:
   schedule:
-    - cron: "*/6 * * * *"   # ~6 dakikada bir (GitHub en erken ~5 dk tetikler)
+    - cron: "*/30 4-23 * * *"   
   workflow_dispatch:
 
 permissions:
