@@ -11,7 +11,10 @@ NOTION_DB_ID = os.environ["NOTION_DATABASE_ID"]
 FEED_NAME    = os.getenv("FEED_NAME", "Flashcards")
 FEED_TZ      = os.getenv("FEED_TZ", "Europe/Istanbul")
 
-notion = NotionClient(auth=NOTION_TOKEN)
+notion = NotionClient(
+    auth=NOTION_TOKEN,
+    notion_version="2022-06-28"   # stabil, eski endpoint sözleşmesi
+)
 
 def iter_notion_pages(database_id: str, page_size: int = 100):
     next_cursor = None
