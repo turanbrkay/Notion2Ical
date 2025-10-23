@@ -30,7 +30,7 @@ jobs:
           set -euxo pipefail
           python -V
           pip install --upgrade pip
-          pip install notion-client
+          pip install notion-client==2.2.1
 
       - name: Ensure docs/ and disable Jekyll
         run: |
